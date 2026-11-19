@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>発信予定表</title>
+<style>
+* { box-sizing: border-box;}
+body { font-family: sans-serif; margin: 0; padding: 16px; background: #fdfbf7; color: #222;}
+main { max-width: 760px; margin: 0 auto;}
+h1 { font-size: 22px;}
+textarea { width: 100%; min-height: 180px; padding: 10px; font-size: 15px; border: 1px solid #bbb; border-radius: 8px;}
+button { padding: 10px 18px; margin: 8px 8px 8px 0; font-size: 15px; border: 1px solid #2e7d32; background: #2e7d32; color: #fff; border-radius: 8px; cursor: pointer;}
+button.sub { background: #fff; color: #2e7d32;}
+.card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin: 12px 0; overflow-wrap: anywhere;}
+.head { font-weight: bold; margin-bottom: 6px;}
+.warn { color: #c62828; font-weight: bold; margin: 6px 0;}
+.tags { color: #555; margin-top: 8px; white-space: pre-wrap;}
+.photo { color: #555; margin-top: 6px; font-size: 14px;}
+.err { color: #c62828;}
+.ok { color: #2e7d32;}
+footer { margin-top: 24px; font-size: 13px; color: #666;}
+</style>
+</head>
+<body>
+<main>
+<h1>発信予定表</h1>
+<p>1行に1本：「曜日｜場所｜本文｜タグ｜写真案」の形で貼ってください。</p>
+<textarea id="input" placeholder="月｜Instagram｜本文｜#タグ｜写真案"></textarea>
+<div>
+<button id="sortBtn">並べる</button>
+<button id="testBtn" class="sub">テスト</button>
+</div>
+<div id="errors"></div>
+<div id="cards"></div>
+<div id="testResult"></div>
+<footer>入れた内容は、このパソコンのブラウザの中だけに保存されます</footer>
+</main>
+<script src="logic.js"></script>
+<script>
+const input = document.getElementById("input");
+const cardsEl = document.getElementById("cards");
+const errorsEl = document.getElementById("errors");
+const KEY = "hasshin-weekly-v1";
+input.value = localStorage.getItem(KEY) || "";
+input.addEventListener("input", () => localStorage.setItem(KEY, input.value));
+
+function render() {
+localStorage.setItem(KEY, input.value);
+const { items, errors} = window.Hasshin.parse(input.value);
+errorsEl.innerHTML = errors.map(e =>
+`<p class="err">⚠ ${e.line}行目：${e.reason}</p>`).join("");
+cardsEl.innerHTML = "";
+items.forEach(item => {
+const { count, warnings} = window.Hasshin.check(item);
+const card = document.createElement("section");
+card.className = "card";
+card.innerHTML = `
+<div class="head">${item.weekday}曜日｜${item.place}｜${count}字</div>
+${warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join("")}
+<div>${item.body.replace(/</g, "&lt;")}</div>
+${item.tags.length? `<div class="tags">${item.tags.join(" ")}</div>`: ""}
+${item.photo? `<div class="photo">写真案：${item.photo.replace(/</g, "&lt;")}</div>`: ""}
+`;
+const btn = document.createElement("button");
+btn.textContent = "コピー";
+btn.addEventListener("click", async () => {
+try { await navigator.clipboard.writeText(window.Hasshin.copyText(item)); btn.textContent = "コピーしました";}
+catch { btn.textContent = "コピーできませんでした";}
+setTimeout(() => btn.textContent = "コピー", 1500);
+});
+card.appendChild(btn);
+cardsEl.appendChild(card);
+});
+}
+document.getElementById("sortBtn").addEventListener("click", render);
+
+const SAMPLE = `曜日｜場所｜本文｜タグ｜写真案
+水｜Instagram｜お客様の声をご紹介します。「においが消えて、子どもの咳が減りました」とのこと。うれしいです。｜#エアコンクリーニング #お客様の声｜作業後のエアコンの正面
+月｜Instagram｜今週もよろしくお願いします。月曜は道具の手入れの日。きれいな道具で、きれいな仕上がりを。｜#エアコンクリーニング #道具｜並べた道具
+火｜X｜エアコンの中、のぞいたことありますか？ 見えない奥にカビやホコリがたまると、風がにおったり電気代が上がったりします。年に1回の分解洗浄で、送風ファンまでまるごとキレイに。今週は平日の午前中にまだ空きがあります。ご予約はプロフィールのリンクから、お気軽にどうぞ。いつも見てくださってありがとうございます！！｜｜分解した送風ファン
+木｜LINE｜11月のご予約、残り5枠です。ご希望の日をこのLINEに送ってください。｜｜カレンダーの画像
+金｜Instagram｜洗う前と洗った後をくらべてみました。水の色を見てください。｜#エアコンクリーニング #掃除 #お掃除 #夏支度 #暮らし #住まい #カビ対策 #節電 #子育て #家事 #ハウスクリーニング｜バケツの水の前後
+土｜X｜週末はご家族そろってお出かけですか？ エアコンも一休み。お出かけ前に「切」を確かめてくださいね。｜#節電｜リモコン
+日｜お知らせ｜年末は混み合います。12月のご予約は11月中がおすすめです。｜｜
+祝｜Instagram｜祝日の営業のお知らせ｜｜`;
+
+document.getElementById("testBtn").addEventListener("click", () => {
+const { items, errors} = window.Hasshin.parse(SAMPLE);
+const byDay = d => items.find(i => i.weekday === d);
+const checks = [
+["取り込めるのは7本", items.length === 7],
+["はじくのは1本・9行目", errors.length === 1 && errors[0].line === 9],
+["並びは月火水木金土日", items.map(i => i.weekday).join("") === "月火水木金土日"],
+["火曜Xは152字・12字オーバー", window.Hasshin.check(byDay("火")).count === 152 && window.Hasshin.check(byDay("火")).warnings.includes("Xは140字まで。12字オーバー")],
+["金曜はタグ11個", window.Hasshin.check(byDay("金")).warnings.includes("タグが11個。多すぎ（目安10個）")],
+["ほかの5本は注意なし", ["月","水","木","土","日"].every(d => window.Hasshin.check(byDay(d)).warnings.length === 0)],
+["月曜コピー文", window.Hasshin.copyText(byDay("月")).endsWith("\n\n#エアコンクリーニング #道具")],
+];
+document.getElementById("testResult").innerHTML =
+"<h2>テスト結果</h2>" + checks.map(([name, ok]) =>
+`<p class="${ok? "ok": "err"}">${ok? "✓": "✗"} ${name}</p>`).join("");
+});
+if (input.value) render();
+</script>
+</body>
+</html>
